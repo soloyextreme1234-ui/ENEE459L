@@ -1,0 +1,154 @@
+{
+  "schema_version": "1.0",
+  "device_id": "11",
+  "hostname": "ECETLAVW1152011-desktop",
+  "collected_at": "2026-09-14T21:10:59Z",
+  "probe_root": "/",
+  "findings": {
+    "module_model": {
+      "value": "NVIDIA Jetson Orin Nano Engineering Reference Developer Kit Super",
+      "source": "/proc/device-tree/model",
+      "status": "ok"
+    },
+    "memory_total_kb": {
+      "value": 7789952,
+      "source": "/proc/meminfo",
+      "status": "ok"
+    },
+    "root_source": {
+      "value": "/dev/nvme0n1p1",
+      "kind": "nvme",
+      "source": "/proc/mounts",
+      "status": "ok"
+    },
+    "nvme_present": {
+      "value": true,
+      "model": "PNY CS2241 500GB SSD",
+      "source": "/sys/block/nvme0n1",
+      "status": "ok"
+    },
+    "pcie_link": {
+      "value": 2.5,
+      "negotiated": {
+        "raw": "LnkSta:\tSpeed 2.5GT/s (downgraded), Width x1 (ok)",
+        "gts": 2.5,
+        "width": 1,
+        "gen": 1
+      },
+      "capability": {
+        "raw": "LnkCap:\tPort #0, Speed 8GT/s, Width x1, ASPM L0s L1, Exit Latency L0s <1us, L1 <64us",
+        "gts": 8.0,
+        "width": 1,
+        "gen": 3
+      },
+      "interpretation": "drive capable of Gen3, link running at Gen1 \u2014 expected on this carrier board, whose M.2 Key-M slot is wired Gen3 x4",
+      "source": "lspci -vv",
+      "status": "ok"
+    },
+    "thermal": {
+      "value": 52.281,
+      "zones": [
+        {
+          "zone": "thermal_zone0",
+          "type": "cpu-thermal",
+          "temp_c": 50.812
+        },
+        {
+          "zone": "thermal_zone7",
+          "type": "soc2-thermal",
+          "temp_c": 49.875
+        },
+        {
+          "zone": "thermal_zone5",
+          "type": "soc0-thermal",
+          "temp_c": 50.812
+        },
+        {
+          "zone": "thermal_zone1",
+          "type": "gpu-thermal",
+          "temp_c": 52.281
+        },
+        {
+          "zone": "thermal_zone8",
+          "type": "tj-thermal",
+          "temp_c": 52.281
+        },
+        {
+          "zone": "thermal_zone6",
+          "type": "soc1-thermal",
+          "temp_c": 51.875
+        }
+      ],
+      "source": "/sys/class/thermal/thermal_zone*/temp",
+      "status": "ok"
+    },
+    "power_mode": {
+      "value": "25W",
+      "mode_id": 1,
+      "source": "nvpmodel -q",
+      "status": "ok"
+    }
+  },
+  "verdicts": {
+    "boots_from_nvme": {
+      "claim": "root filesystem is on NVMe",
+      "result": "pass",
+      "evidence": {
+        "value": "/dev/nvme0n1p1",
+        "kind": "nvme",
+        "source": "/proc/mounts",
+        "status": "ok"
+      },
+      "detail": "root is /dev/nvme0n1p1"
+    },
+    "nvme_fitted": {
+      "claim": "an NVMe drive is fitted and visible",
+      "result": "pass",
+      "evidence": {
+        "value": true,
+        "model": "PNY CS2241 500GB SSD",
+        "source": "/sys/block/nvme0n1",
+        "status": "ok"
+      }
+    },
+    "memory_visible": {
+      "claim": "at least 6 GB of RAM is visible to Linux",
+      "result": "pass",
+      "evidence": {
+        "value": 7789952,
+        "source": "/proc/meminfo",
+        "status": "ok"
+      },
+      "detail": "7.43 GiB visible; the carveout for GPU and hardware is taken before Linux sees the pool"
+    },
+    "pcie_link_understood": {
+      "claim": "the negotiated PCIe link is known and explained",
+      "result": "pass",
+      "evidence": {
+        "value": 2.5,
+        "negotiated": {
+          "raw": "LnkSta:\tSpeed 2.5GT/s (downgraded), Width x1 (ok)",
+          "gts": 2.5,
+          "width": 1,
+          "gen": 1
+        },
+        "capability": {
+          "raw": "LnkCap:\tPort #0, Speed 8GT/s, Width x1, ASPM L0s L1, Exit Latency L0s <1us, L1 <64us",
+          "gts": 8.0,
+          "width": 1,
+          "gen": 3
+        },
+        "interpretation": "drive capable of Gen3, link running at Gen1 \u2014 expected on this carrier board, whose M.2 Key-M slot is wired Gen3 x4",
+        "source": "lspci -vv",
+        "status": "ok"
+      },
+      "detail": "drive capable of Gen3, link running at Gen1 \u2014 expected on this carrier board, whose M.2 Key-M slot is wired Gen3 x4"
+    }
+  },
+  "summary": {
+    "pass": 4,
+    "fail": 0,
+    "unknown": 0,
+    "ready_for_labs": true
+  }
+}
