@@ -113,39 +113,176 @@ def grab_frame(pipeline: str, warmup_frames: int = 15) -> np.ndarray:
 ## Your work starts here ###
 ############################
 
+def _bytes_per_pixel(fmt: str) -> float:
+    table = {
+        # One byte of luma per pixel, plus a quarter of a byte of Cb and a
+        # quarter of a byte of Cr, because the chroma plane is half width and
+        # half height. NV12 interleaves the two chroma channels in one plane
+        # and I420 keeps them in two, which changes the layout and not the
+        # total, which is why both entries are the same number.
+        "nv12": 1.5,
+        "i420": 1.5,
+        # Ten bits per pixel on the wire: four pixels in five bytes. This is
+        # the only entry describing something that has not reached memory yet.
+        "raw10": 1.25,
+        "gray8": 1.0,
+        "rgb": 3.0,
+        "bgr": 3.0,
+        # The fourth byte is padding. It carries no information and it costs
+        # exactly as much to move as the three that do.
+        "bgrx": 4.0,
+    }
+    key = str(fmt).lower()
+    if key not in table:
+        raise FrameError(
+            f"format {fmt!r} is not one of {', '.join(FORMATS)}. If you meant "
+            "a format this lab does not price, add it here and say in your "
+            "paragraph what its bytes per pixel is and how you know."
+        )
+    return table[key]
+
+
+
+# ---------------------------------------------------------------------------
+# Hardware Capture & Pipeline Configuration
+# ---------------------------------------------------------------------------
+
+def gstreamer_pipeline(
+    capture_width: int = 1920,
+    capture_height: int = 1080,
+    display_width: int = 1920,
+    display_height: int = 1080,
+    framerate: int = 30,
+    flip_method: int = 0,
+) -> str:
+    return (
+        f"nvarguscamerasrc ! "
+        f"video/x-raw(memory:NVMM), width=(int){capture_width}, height=(int){capture_height}, "
+        f"format=(string)NV12, framerate=(fraction){framerate}/1 ! "
+        f"nvvidconv flip-method={flip_method} ! "
+        f"video/x-raw, width=(int){display_width}, height=(int){display_height}, format=(string)BGRx ! "
+        f"videoconvert ! "
+        f"video/x-raw, format=(string)BGR ! "
+        f"appsink drop=1"
+    )
+
+
+def grab_frame(pipeline: str, warmup_frames: int = 15) -> np.ndarray:
+    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+    if not cap.isOpened():
+        raise RuntimeError("Failed to open camera via GStreamer pipeline.")
+
+    try:
+        # Warmup loop to allow sensor auto-exposure and AWB to converge
+        for _ in range(warmup_frames):
+            ret, _ = cap.read()
+            if not ret:
+                time.sleep(0.03)
+
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            raise RuntimeError("Camera opened, but failed to capture a valid frame.")
+        return frame
+    finally:
+        cap.release()
+
+
+############################
+## Your work starts here ###
+############################
+
 def frame_bytes(width: int, height: int, fmt: str) -> int:
-    pass
+    from math import ceil
+
+    for name, value in (("width", width), ("height", height)):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise FrameError(f"{name} must be a positive integer")
+    return ceil(width * height * _bytes_per_pixel(fmt))
 
 
 def bytes_per_second(width: int, height: int, fmt: str, fps: float) -> float:
-    pass
+    if not fps > 0:
+        raise FrameError("fps must be positive")
+    return float(frame_bytes(width, height, fmt) * fps)
 
 
 def frame_stats(pixels: Sequence[float] | Iterable[float]) -> dict[str, float]:
-    pass
+    values = [float(value) for value in pixels]
+    if not values:
+        raise FrameError("cannot calculate statistics without pixels")
+
+    minimum = min(values)
+    maximum = max(values)
+    count = len(values)
+    mean = sum(values) / count
+    variance = sum((value - mean) ** 2 for value in values) / count
+    return {
+        "min": minimum,
+        "max": maximum,
+        "mean": mean,
+        "spread": maximum - minimum,
+        "sd": variance ** 0.5,
+        "samples": float(count),
+    }
 
 
 def classify(stats: dict[str, float]) -> tuple[str, str]:
-    pass
+    for key in ("max", "spread", "mean"):
+        if key not in stats:
+            raise FrameError(f"missing statistic: {key}")
+
+    maximum = stats["max"]
+    spread = stats["spread"]
+    mean = stats["mean"]
+    if maximum <= BLACK_MAX:
+        return "black", f"maximum {maximum:.4f} is at or below {BLACK_MAX:.4f}."
+    if spread < FLAT_SPREAD:
+        return "flat", f"spread {spread:.4f} is below {FLAT_SPREAD:.4f}."
+    if mean < 0.10:
+        return "dark", f"mean {mean:.4f} is below 0.10. Structure exists, but exposure is low."
+    return "scene", f"mean {mean:.4f}, spread {spread:.4f}. Exposed and structured."
 
 
 def conversion_bytes(width: int, height: int, src: str, dst: str) -> int:
-    pass
+    if src.lower() == dst.lower():
+        return 0
+    read_bytes = frame_bytes(width, height, src)
+    write_bytes = frame_bytes(width, height, dst)
+    return read_bytes + write_bytes
 
 
 def resize_bytes(src_w: int, src_h: int, dst_w: int, dst_h: int,
                  fmt: str) -> int:
-    pass
+    read_bytes = frame_bytes(src_w, src_h, fmt)
+    write_bytes = frame_bytes(dst_w, dst_h, fmt)
+    return read_bytes + write_bytes
 
 
 def normalise_bytes(width: int, height: int, channels: int = 3,
                     out_bytes: int = 4) -> int:
-    pass
+    for name, value in (("width", width), ("height", height),
+                        ("channels", channels), ("out_bytes", out_bytes)):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise FrameError(f"{name} must be a positive integer")
+    values = width * height * channels
+    read_bytes = values
+    write_bytes = values * out_bytes
+    return read_bytes + write_bytes
 
 
 def summarise_formats(width: int, height: int) -> list[dict[str, Any]]:
-    pass
-
+    rgb_bytes = frame_bytes(width, height, "rgb")
+    rows = []
+    for fmt in FORMATS:
+        size = frame_bytes(width, height, fmt)
+        rows.append({
+            "format": fmt,
+            "bytes_per_pixel": _bytes_per_pixel(fmt),
+            "bytes": size,
+            "relative_to_rgb": size / rgb_bytes,
+            "note": FORMAT_NOTES[fmt],
+        })
+    return rows
 
 ###############################
 ##### The main function #######
@@ -165,7 +302,7 @@ def main(
     # 1. Capture frame from hardware
     pipeline_str = gstreamer_pipeline()
     frame_bgr = grab_frame(pipeline_str)
-
+    
     # 2. Save captured image to disk
     cv2.imwrite(str(img_path), frame_bgr)
     height, width, _ = frame_bgr.shape
